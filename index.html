@@ -1,0 +1,572 @@
+<!doctype html>
+<html lang="no">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#111827">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Studietracker">
+<link rel="manifest" href="manifest.webmanifest">
+<title>Studietracker</title>
+<style>
+:root{color-scheme:light dark;--bg:#f6f7f9;--card:#fff;--text:#111827;--muted:#6b7280;--border:#e5e7eb;--accent:#2563eb;--accent-soft:#dbeafe;--success:#16a34a;--danger:#dc2626}
+@media(prefers-color-scheme:dark){:root{--bg:#0b0f16;--card:#141a23;--text:#f8fafc;--muted:#94a3b8;--border:#263244;--accent:#60a5fa;--accent-soft:#172554;--success:#4ade80;--danger:#f87171}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",Arial,sans-serif;position:relative;min-height:100%}
+body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;background-image:url("ntnu-logo.png");background-repeat:no-repeat;background-position:center 42%;background-size:min(78vw,680px) auto;opacity:.055}
+main{position:relative;z-index:1}
+main{max-width:760px;margin:0 auto;padding:18px 16px 40px}h1{font-size:28px;margin:8px 0 4px}.sub,.small{color:var(--muted);font-size:13px}.sub{margin-bottom:18px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:20px;padding:16px;margin-bottom:14px}.row{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.big{font-size:32px;font-weight:700}
+.precise-total{font-size:30px;font-weight:750;font-variant-numeric:tabular-nums;letter-spacing:.3px}
+.live-dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--success);margin-right:7px;vertical-align:1px}
+.live-dot.paused{background:var(--muted)}.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.subject-card{padding:14px;border:1px solid var(--border);border-radius:16px;background:var(--card)}
+.subject-card.active{outline:2px solid var(--accent);background:var(--accent-soft)}.subject-top{display:flex;align-items:center;gap:8px;justify-content:space-between}
+.subject-select{border:0;background:transparent;color:inherit;padding:0;text-align:left;flex:1;min-height:44px}.subject-select strong{display:block;font-size:17px;margin-bottom:5px}
+progress{width:100%;height:10px}.timer{text-align:center;font-size:58px;font-weight:700;font-variant-numeric:tabular-nums;padding:16px 0}
+button,select,input{font:inherit}button{min-height:46px;padding:0 16px;border-radius:12px;font-weight:600}.primary{background:var(--accent);color:#fff;border:0}.secondary{background:transparent;color:var(--text);border:1px solid var(--border)}
+.buttons{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}label{font-size:13px;color:var(--muted);display:block}
+select,input{width:100%;min-height:46px;border:1px solid var(--border);border-radius:12px;background:var(--card);color:var(--text);padding:0 12px;margin-top:5px}
+.formgrid{display:grid;grid-template-columns:1fr 90px 90px auto;gap:8px;align-items:end}.calgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.danger{color:var(--danger)}
+.weekbar{height:12px;background:var(--border);border-radius:999px;overflow:hidden}.weekbar>div{height:100%;background:var(--success);width:0}.status{min-height:20px;margin-top:8px;color:var(--muted);font-size:13px}.autosave{font-size:12px;color:var(--muted);text-align:center;margin-top:7px}
+dialog{width:min(92%,420px);border:1px solid var(--border);border-radius:18px;background:var(--card);color:var(--text);padding:0}dialog::backdrop{background:rgba(0,0,0,.45)}.dialog-inner{padding:18px}.dialog-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:14px 0}
+@media(max-width:560px){.formgrid{grid-template-columns:1fr 1fr}.formgrid label:first-child,.formgrid button{grid-column:1/-1}.calgrid{grid-template-columns:1fr}.timer{font-size:48px}}
+</style>
+</head>
+<body>
+<main>
+<h1>Studietracker</h1>
+<div class="sub">60 min arbeid · 15 min pause · 10 timer per fag</div>
+
+<section class="card">
+  <div class="row">
+    <div><div class="small">Denne uken</div><div class="big"><span id="totalWorked">0t 00m</span> / 40t</div></div>
+    <div class="small" id="weekLabel"></div>
+  </div>
+  <div class="weekbar" style="margin-top:12px"><div id="totalBar"></div></div>
+</section>
+
+<section class="card">
+  <div class="row">
+    <div>
+      <div class="small"><span id="workDot" class="live-dot paused"></span>Dagens effektive arbeidstid</div>
+      <div class="precise-total" id="dailyElapsed">00:00:00</div>
+    </div>
+    <div class="small" id="dailyState">Ikke startet</div>
+  </div>
+  <div class="small" style="margin-top:8px">Summerer all effektiv arbeidstid gjennom dagen. 15-minutters pauser teller ikke.</div>
+</section>
+
+<section class="grid" id="subjects"></section>
+
+<section class="card" style="margin-top:14px">
+  <div class="row"><div><div class="small">Valgt fag</div><strong id="selectedName">Marin</strong></div><div class="small" id="phaseLabel">Arbeid · 60 min</div></div>
+  <div class="timer" id="timer">60:00</div>
+  <div class="buttons">
+    <button class="primary" id="startPause">Start</button>
+    <button class="secondary" id="nextPhase">Neste fase</button>
+    <button class="secondary" id="resetSession">Nullstill økt</button>
+  </div>
+  <div class="small" style="text-align:center;margin-top:10px">Arbeidstid legges automatisk til valgt fag mens timeren går.</div>
+    <div class="autosave" id="autoSaveStatus">Arbeidstid registreres automatisk når du stopper eller fullfører en blokk.</div>
+</section>
+
+<section class="card">
+  <strong>Legg til arbeidstid</strong>
+  <div class="small" style="margin-top:4px">Du kan for eksempel legge inn 2 timer og 32 minutter direkte.</div>
+  <form id="manualForm" class="formgrid" style="margin-top:12px">
+    <label>Fag<select id="manualSubject"></select></label>
+    <label>Timer<input id="manualHours" type="number" min="0" max="24" value="0"></label>
+    <label>Minutter<input id="manualMinutes" type="number" min="0" max="59" value="0"></label>
+    <button class="primary" type="submit">Legg til</button>
+  </form>
+  <div class="status" id="status"></div>
+</section>
+
+<section class="card">
+  <strong>Apple Kalender</strong>
+  <div class="small" style="margin-top:4px">
+    Lim inn den offentlige webcal-lenken fra Apple Kalender. Lenken lagres bare lokalt på denne enheten.
+  </div>
+
+  <label style="margin-top:12px">Offentlig kalenderlenke
+    <input id="webcalUrl" type="url" inputmode="url" autocomplete="off" placeholder="webcal://pXX-caldav.icloud.com/published/2/…">
+  </label>
+
+  <div class="buttons" style="justify-content:flex-start;margin-top:10px">
+    <button class="primary" id="showLiveCalendar">Vis / oppdater live kalender</button>
+    <button class="secondary danger" id="forgetCalendar">Fjern lagret lenke</button>
+  </div>
+
+  <div id="webcalStatus" class="status"></div>
+
+  <div id="liveCalendarWrap" style="display:none;margin-top:12px">
+    <iframe
+      id="liveCalendarFrame"
+      title="Apple Kalender"
+      style="width:100%;height:620px;border:1px solid var(--border);border-radius:14px;background:var(--card)"
+      loading="lazy"
+      referrerpolicy="no-referrer">
+    </iframe>
+    <div class="small" style="margin-top:8px">
+      Live-visningen bruker Open Web Calendar til å hente den offentlige kalenderfeeden. Ikke bruk dette for en kalender du ikke ønsker å dele via en offentlig lenke.
+    </div>
+  </div>
+
+  <details style="margin-top:14px">
+    <summary style="cursor:pointer;font-weight:600">Alternativ: importer .ics-fil lokalt</summary>
+    <div class="small" style="margin-top:8px">
+      Denne metoden sender ikke kalenderlenken til en ekstern kalender-viser.
+    </div>
+    <label class="secondary" style="display:inline-flex;align-items:center;justify-content:center;min-height:46px;padding:0 16px;border-radius:12px;cursor:pointer;font-weight:600;margin-top:10px">
+      Velg .ics-fil
+      <input id="icsFile" type="file" accept=".ics,text/calendar" style="display:none">
+    </label>
+
+    <div class="row" style="margin-top:14px">
+      <button class="secondary" id="prevWeek">← Forrige</button>
+      <strong id="calendarWeekLabel">Denne uken</strong>
+      <button class="secondary" id="nextWeek">Neste →</button>
+    </div>
+
+    <div id="calendarStatus" class="status"></div>
+    <div id="calendarWeek" style="display:grid;gap:10px;margin-top:10px"></div>
+  </details>
+</section>
+
+<section class="card">
+  <div class="row"><div><strong>Ny uke</strong><div class="small">Nullstilles automatisk ved ny ISO-uke.</div></div><button class="secondary danger" id="resetWeek">Nullstill uke nå</button></div>
+</section>
+</main>
+
+<dialog id="editDialog">
+<div class="dialog-inner">
+  <div class="row"><div><div class="small">Rediger registrert tid</div><strong id="editTitle">Marin</strong></div><button class="secondary" id="closeDialog">Lukk</button></div>
+  <div class="dialog-grid">
+    <label>Timer<input id="editHours" type="number" min="0" max="99" value="0"></label>
+    <label>Minutter<input id="editMinutes" type="number" min="0" max="59" value="0"></label>
+  </div>
+  <div class="small">Dette setter total tid for faget denne uken.</div>
+  <div class="buttons" style="justify-content:flex-end;margin-top:16px">
+    <button class="secondary danger" id="clearSubject">Sett til 0</button>
+    <button class="primary" id="saveEdit">Lagre tid</button>
+  </div>
+</div>
+</dialog>
+
+<script>
+(() => {
+const subjects=["Marin","Matte","ITGK","Mekanikk"], goal=36000,totalGoal=144000;
+const state={
+  selected:localStorage.getItem("selected")||"Marin",
+  totals:{},
+  phase:localStorage.getItem("phase")||"work",
+  remaining:Number(localStorage.getItem("remaining"))||3600,
+  running:localStorage.getItem("running")==="true",
+  anchorAt:Number(localStorage.getItem("anchorAt"))||0,
+  runningSubject:localStorage.getItem("runningSubject")||"",
+  interval:null,
+  editingSubject:null,
+  dailyElapsed:Number(localStorage.getItem("dailyElapsed"))||0,
+  dailyKey:localStorage.getItem("dailyKey")||"",
+  weekKey:localStorage.getItem("weekKey")||"",
+  calendarEvents:[],
+  calendarWeekOffset:0
+};
+const $=s=>document.querySelector(s);
+
+function isoWeekKey(d=new Date()){const x=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()));const day=x.getUTCDay()||7;x.setUTCDate(x.getUTCDate()+4-day);const ys=new Date(Date.UTC(x.getUTCFullYear(),0,1));const w=Math.ceil((((x-ys)/86400000)+1)/7);return `${x.getUTCFullYear()}-W${String(w).padStart(2,"0")}`}
+function localDayKey(d=new Date()){return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`}
+function nextMidnightMs(ms){const d=new Date(ms);return new Date(d.getFullYear(),d.getMonth(),d.getDate()+1,0,0,0,0).getTime()}
+
+subjects.forEach(s=>state.totals[s]=Number(localStorage.getItem("total_"+s))||0);
+
+function resetForCurrentDate(now=new Date()){
+  const wk=isoWeekKey(now),day=localDayKey(now);
+  if(state.weekKey!==wk){
+    subjects.forEach(s=>state.totals[s]=0);
+    state.weekKey=wk;
+  }
+  if(state.dailyKey!==day){
+    state.dailyElapsed=0;
+    state.dailyKey=day;
+  }
+}
+if(!state.running)resetForCurrentDate(new Date());
+
+subjects.forEach(s=>{
+  const card=document.createElement("div");card.className="subject-card";card.dataset.subject=s;
+  card.innerHTML=`<div class="subject-top"><button class="subject-select"><strong>${s}</strong><div class="small"><span class="done">0t 00m</span> / 10t</div></button><button class="secondary edit">Rediger</button></div><progress max="1" value="0"></progress>`;
+  card.querySelector(".subject-select").addEventListener("click",()=>{
+    if(state.running)reconcileRunning();
+    state.selected=s;
+    if(state.running&&state.phase==="work"){
+      state.runningSubject=s;
+      state.anchorAt=Date.now();
+    }
+    save();render();
+  });
+  card.querySelector(".edit").addEventListener("click",()=>openEdit(s));
+  $("#subjects").appendChild(card);
+  ["manualSubject"].forEach(id=>{const target=$("#"+id);if(target){const o=document.createElement("option");o.value=s;o.textContent=s;target.appendChild(o)}})
+});
+
+function fmt(sec){const m=Math.floor(Math.max(0,sec)/60);return `${Math.floor(m/60)}t ${String(m%60).padStart(2,"0")}m`}
+function precise(sec){const s=Math.floor(Math.max(0,sec));const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),r=s%60;return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}:${String(r).padStart(2,"0")}`}
+function clock(sec){const s=Math.max(0,Math.ceil(sec));return `${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`}
+
+function save(){
+  subjects.forEach(s=>localStorage.setItem("total_"+s,String(state.totals[s])));
+  localStorage.setItem("selected",state.selected);
+  localStorage.setItem("phase",state.phase);
+  localStorage.setItem("remaining",String(state.remaining));
+  localStorage.setItem("dailyElapsed",String(state.dailyElapsed));
+  localStorage.setItem("dailyKey",state.dailyKey);
+  localStorage.setItem("weekKey",state.weekKey);
+  localStorage.setItem("running",String(state.running));
+  localStorage.setItem("anchorAt",String(state.anchorAt||0));
+  localStorage.setItem("runningSubject",state.runningSubject||"");
+}
+
+function render(){
+  let total=0;
+  document.querySelectorAll(".subject-card").forEach(c=>{
+    const s=c.dataset.subject,v=state.totals[s]||0;total+=v;
+    c.classList.toggle("active",s===state.selected);
+    c.querySelector(".done").textContent=fmt(v);
+    c.querySelector("progress").value=Math.min(1,v/goal)
+  });
+  $("#selectedName").textContent=state.selected;
+  $("#totalWorked").textContent=fmt(total);
+  $("#dailyElapsed").textContent=precise(state.dailyElapsed);
+  const activelyWorking=state.running&&state.phase==="work";
+  $("#dailyState").textContent=activelyWorking?`Jobber med ${state.runningSubject||state.selected}`:(state.running&&state.phase==="break"?"Pause – teller ikke":(state.dailyElapsed>0?"Dagens total":"Ikke startet"));
+  $("#workDot").classList.toggle("paused",!activelyWorking);
+  $("#totalBar").style.width=`${Math.min(100,total/totalGoal*100)}%`;
+  $("#timer").textContent=clock(state.remaining);
+  $("#phaseLabel").textContent=state.phase==="work"?"Arbeid · 60 min":"Pause · 15 min";
+  $("#startPause").textContent=state.running?"Pause":"Start";
+  $("#weekLabel").textContent=state.weekKey||isoWeekKey();
+}
+
+function creditInterval(fromMs,toMs,subject){
+  let cursor=fromMs;
+  while(cursor<toMs){
+    const boundary=Math.min(toMs,nextMidnightMs(cursor));
+    const d=new Date(cursor);
+    const wk=isoWeekKey(d),day=localDayKey(d);
+    if(state.weekKey!==wk){
+      subjects.forEach(s=>state.totals[s]=0);
+      state.weekKey=wk;
+    }
+    if(state.dailyKey!==day){
+      state.dailyElapsed=0;
+      state.dailyKey=day;
+    }
+    const seconds=Math.max(0,(boundary-cursor)/1000);
+    if(state.phase==="work"){
+      const target=subjects.includes(subject)?subject:state.selected;
+      state.totals[target]=(state.totals[target]||0)+seconds;
+      state.dailyElapsed+=seconds;
+    }
+    cursor=boundary;
+  }
+}
+
+function showAutoSave(seconds,subject,reason){
+  const el=$("#autoSaveStatus");if(!el||seconds<=0)return;
+  const s=Math.floor(seconds),m=Math.floor(s/60),r=s%60;
+  const amount=m>0?`${m}m ${String(r).padStart(2,"0")}s`:`${r}s`;
+  el.textContent=`Registrert ${amount} på ${subject}${reason?` · ${reason}`:""}`;
+}
+
+function clearRunAnchor(){
+  state.running=false;
+  state.anchorAt=0;
+  state.runningSubject="";
+  if(state.interval)clearInterval(state.interval);
+  state.interval=null;
+}
+
+function completeCurrentPhase(){
+  const finished=state.phase;
+  clearRunAnchor();
+  state.phase=finished==="work"?"break":"work";
+  state.remaining=state.phase==="work"?3600:900;
+}
+
+function reconcileRunning(nowMs=Date.now(),reason=""){
+  if(!state.running||!state.anchorAt)return {completed:false,seconds:0,subject:state.runningSubject||state.selected};
+  const elapsedMs=Math.max(0,nowMs-state.anchorAt);
+  if(elapsedMs<=0)return {completed:false,seconds:0,subject:state.runningSubject||state.selected};
+
+  const availableMs=Math.max(0,state.remaining*1000);
+  const appliedMs=Math.min(elapsedMs,availableMs);
+  const endMs=state.anchorAt+appliedMs;
+  const subject=state.runningSubject||state.selected;
+
+  if(appliedMs>0)creditInterval(state.anchorAt,endMs,subject);
+  state.remaining=Math.max(0,state.remaining-appliedMs/1000);
+  state.anchorAt=endMs;
+
+  if(state.remaining<=0.001){
+    const finishedPhase=state.phase;
+    completeCurrentPhase();
+    save();
+    if(finishedPhase==="work")showAutoSave(appliedMs/1000,subject,"60 min fullført");
+    return {completed:true,seconds:appliedMs/1000,subject};
+  }
+
+  state.anchorAt=nowMs;
+  save();
+  if(reason&&state.phase==="work")showAutoSave(appliedMs/1000,subject,reason);
+  return {completed:false,seconds:appliedMs/1000,subject};
+}
+
+function ensureInterval(){
+  if(!state.running)return;
+  if(state.interval)clearInterval(state.interval);
+  state.interval=setInterval(()=>{reconcileRunning();render()},1000);
+}
+
+function stop(){
+  if(state.running)reconcileRunning(Date.now(),state.phase==="work"?"stoppet":"pause stoppet");
+  clearRunAnchor();
+  save();render();
+}
+
+function nextPhase(){
+  const result=state.running?reconcileRunning(Date.now(),state.phase==="work"?"avsluttet manuelt":"pause hoppet over"):{completed:false};
+  if(result.completed){render();return}
+  clearRunAnchor();
+  state.phase=state.phase==="work"?"break":"work";
+  state.remaining=state.phase==="work"?3600:900;
+  save();render();
+}
+
+function openEdit(s){
+  if(state.running)reconcileRunning();
+  state.editingSubject=s;
+  const m=Math.floor((state.totals[s]||0)/60);
+  $("#editTitle").textContent=s;
+  $("#editHours").value=Math.floor(m/60);
+  $("#editMinutes").value=m%60;
+  $("#editDialog").showModal()
+}
+function closeEdit(){$("#editDialog").close()}
+
+$("#startPause").addEventListener("click",()=>{
+  if(state.running){stop();return}
+  resetForCurrentDate(new Date());
+  state.running=true;
+  state.anchorAt=Date.now();
+  state.runningSubject=state.phase==="work"?state.selected:"";
+  save();ensureInterval();render();
+});
+$("#nextPhase").addEventListener("click",nextPhase);
+$("#resetSession").addEventListener("click",()=>{
+  stop();
+  state.phase="work";
+  state.remaining=3600;
+  save();render()
+});
+$("#manualForm").addEventListener("submit",e=>{
+  e.preventDefault();
+  if(state.running)reconcileRunning();
+  const s=$("#manualSubject").value;
+  let h=Math.max(0,Math.min(24,Math.floor(Number($("#manualHours").value)||0))),m=Math.max(0,Math.min(59,Math.floor(Number($("#manualMinutes").value)||0)));
+  if(!h&&!m){$("#status").textContent="Skriv inn timer og/eller minutter.";return}
+  resetForCurrentDate(new Date());
+  state.totals[s]+=(h*60+m)*60;
+  save();render();
+  $("#status").textContent=`La til ${h?h+"t ":""}${m?m+"m":""} på ${s}.`;
+  $("#manualHours").value=0;$("#manualMinutes").value=0
+});
+$("#saveEdit").addEventListener("click",()=>{
+  if(state.running)reconcileRunning();
+  const s=state.editingSubject;if(!s)return;
+  let h=Math.max(0,Math.min(99,Math.floor(Number($("#editHours").value)||0))),m=Math.max(0,Math.min(59,Math.floor(Number($("#editMinutes").value)||0)));
+  state.totals[s]=(h*60+m)*60;
+  save();render();
+  $("#status").textContent=`Oppdaterte ${s} til ${h}t ${String(m).padStart(2,"0")}m.`;
+  closeEdit()
+});
+$("#clearSubject").addEventListener("click",()=>{
+  if(state.running)reconcileRunning();
+  const s=state.editingSubject;if(!s)return;
+  state.totals[s]=0;save();render();closeEdit()
+});
+$("#closeDialog").addEventListener("click",closeEdit);
+$("#resetWeek").addEventListener("click",()=>{
+  if(!confirm("Nullstille all registrert tid denne uken?"))return;
+  stop();
+  subjects.forEach(s=>state.totals[s]=0);
+  state.phase="work";
+  state.remaining=3600;
+  state.dailyElapsed=0;
+  state.dailyKey=localDayKey();
+  state.weekKey=isoWeekKey();
+  save();render()
+});
+
+if(state.running){
+  reconcileRunning();
+  if(state.running)ensureInterval();
+}else{
+  resetForCurrentDate(new Date());
+  save();
+}
+render();
+
+
+function normalizeWebcalUrl(value){
+  let url=(value||"").trim();
+  if(!url)return "";
+  if(url.startsWith("https://")||url.startsWith("http://"))return url;
+  if(url.startsWith("webcal://"))return url;
+  return "";
+}
+function renderLiveCalendar(){
+  const input=$("#webcalUrl");
+  const value=normalizeWebcalUrl(input.value);
+  if(!value){
+    $("#webcalStatus").textContent="Lim inn en gyldig webcal://- eller https://-kalenderlenke.";
+    $("#liveCalendarWrap").style.display="none";
+    return;
+  }
+  localStorage.setItem("applePublicCalendarUrl",value);
+  const viewer="https://open-web-calendar.hosted.quelltext.eu/calendar.html?url="+encodeURIComponent(value)+"&wmode=opaque";
+  $("#liveCalendarFrame").src=viewer;
+  $("#liveCalendarWrap").style.display="block";
+  $("#webcalStatus").textContent="Kalenderlenken er lagret lokalt på denne enheten.";
+}
+const savedWebcal=localStorage.getItem("applePublicCalendarUrl")||"";
+if(savedWebcal){
+  $("#webcalUrl").value=savedWebcal;
+  renderLiveCalendar();
+}
+$("#showLiveCalendar").addEventListener("click",renderLiveCalendar);
+$("#forgetCalendar").addEventListener("click",()=>{
+  localStorage.removeItem("applePublicCalendarUrl");
+  $("#webcalUrl").value="";
+  $("#liveCalendarFrame").src="about:blank";
+  $("#liveCalendarWrap").style.display="none";
+  $("#webcalStatus").textContent="Den lagrede kalenderlenken er fjernet fra denne enheten.";
+});
+
+function unfoldICS(text){return text.replace(/\r?\n[ \t]/g,"")}
+function parseICSDate(value){
+  if(!value)return null;
+  const clean=value.trim();
+  if(/^\d{8}$/.test(clean)){
+    const y=+clean.slice(0,4),m=+clean.slice(4,6)-1,d=+clean.slice(6,8);
+    return new Date(y,m,d,0,0,0);
+  }
+  const z=clean.endsWith("Z"),v=clean.replace(/Z$/,"");
+  const y=+v.slice(0,4),m=+v.slice(4,6)-1,d=+v.slice(6,8),h=+(v.slice(9,11)||0),mi=+(v.slice(11,13)||0),s=+(v.slice(13,15)||0);
+  return z?new Date(Date.UTC(y,m,d,h,mi,s)):new Date(y,m,d,h,mi,s);
+}
+function unescapeICS(v){return (v||"").replace(/\\n/gi,"\n").replace(/\\,/g,",").replace(/\\;/g,";").replace(/\\\\/g,"\\")}
+function parseICS(text){
+  const src=unfoldICS(text);
+  const blocks=src.split("BEGIN:VEVENT").slice(1).map(x=>x.split("END:VEVENT")[0]);
+  const events=[];
+  blocks.forEach(block=>{
+    const lines=block.split(/\r?\n/);
+    const get=(name)=>{
+      const line=lines.find(l=>l.startsWith(name+":")||l.startsWith(name+";"));
+      if(!line)return "";
+      return line.slice(line.indexOf(":")+1);
+    };
+    const start=parseICSDate(get("DTSTART")),end=parseICSDate(get("DTEND"));
+    if(!start)return;
+    events.push({
+      title:unescapeICS(get("SUMMARY"))||"Uten tittel",
+      start,
+      end:end||new Date(start.getTime()+3600000),
+      location:unescapeICS(get("LOCATION"))
+    });
+  });
+  return events.sort((a,b)=>a.start-b.start);
+}
+function mondayOf(date){
+  const d=new Date(date.getFullYear(),date.getMonth(),date.getDate());
+  const day=d.getDay()||7;
+  d.setDate(d.getDate()-day+1);
+  d.setHours(0,0,0,0);
+  return d;
+}
+function sameDay(a,b){return a.getFullYear()===b.getFullYear()&&a.getMonth()===b.getMonth()&&a.getDate()===b.getDate()}
+function dayName(d){return ["søndag","mandag","tirsdag","onsdag","torsdag","fredag","lørdag"][d.getDay()]}
+function dateShort(d){return `${d.getDate()}.${String(d.getMonth()+1).padStart(2,"0")}`}
+function timeShort(d){return `${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`}
+function renderCalendar(){
+  const weekStart=mondayOf(new Date());
+  weekStart.setDate(weekStart.getDate()+state.calendarWeekOffset*7);
+  const weekEnd=new Date(weekStart);weekEnd.setDate(weekEnd.getDate()+6);
+  $("#calendarWeekLabel").textContent=`${dateShort(weekStart)}–${dateShort(weekEnd)} ${weekEnd.getFullYear()}`;
+  const host=$("#calendarWeek");host.innerHTML="";
+  for(let i=0;i<7;i++){
+    const day=new Date(weekStart);day.setDate(day.getDate()+i);
+    const dayEvents=state.calendarEvents.filter(e=>sameDay(e.start,day));
+    const box=document.createElement("div");
+    box.style.cssText="border:1px solid var(--border);border-radius:14px;padding:12px;background:var(--card)";
+    const heading=document.createElement("div");
+    heading.style.cssText="display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:7px";
+    heading.innerHTML=`<strong style="text-transform:capitalize">${dayName(day)}</strong><span class="small">${dateShort(day)}</span>`;
+    box.appendChild(heading);
+    if(!dayEvents.length){
+      const empty=document.createElement("div");empty.className="small";empty.textContent="Ingen hendelser";
+      box.appendChild(empty);
+    }else{
+      dayEvents.forEach(ev=>{
+        const row=document.createElement("div");
+        row.style.cssText="padding:8px 0;border-top:1px solid var(--border)";
+        const allDay=ev.start.getHours()===0&&ev.start.getMinutes()===0&&ev.end.getHours()===0&&ev.end.getMinutes()===0;
+        row.innerHTML=`<div style="font-weight:600">${ev.title}</div><div class="small">${allDay?"Hele dagen":`${timeShort(ev.start)}–${timeShort(ev.end)}`}${ev.location?` · ${ev.location}`:""}</div>`;
+        box.appendChild(row);
+      });
+    }
+    host.appendChild(box);
+  }
+}
+$("#icsFile").addEventListener("change",async e=>{
+  const file=e.target.files&&e.target.files[0];if(!file)return;
+  try{
+    const text=await file.text();
+    state.calendarEvents=parseICS(text);
+    $("#calendarStatus").textContent=`Importerte ${state.calendarEvents.length} kalenderhendelser. Kalenderen vises bare lokalt på denne enheten.`;
+    state.calendarWeekOffset=0;
+    renderCalendar();
+  }catch(err){
+    $("#calendarStatus").textContent="Kunne ikke lese kalenderfilen. Prøv en .ics-fil eksportert fra Apple/iCloud Kalender.";
+  }
+});
+$("#prevWeek").addEventListener("click",()=>{state.calendarWeekOffset--;renderCalendar()});
+$("#nextWeek").addEventListener("click",()=>{state.calendarWeekOffset++;renderCalendar()});
+renderCalendar();
+
+document.addEventListener("visibilitychange",()=>{
+  if(document.hidden){
+    if(state.running)reconcileRunning(Date.now(),"");
+    save();
+  }else{
+    if(state.running){
+      reconcileRunning();
+      if(state.running)ensureInterval();
+    }else{
+      resetForCurrentDate(new Date());
+      save();
+    }
+    render();
+  }
+});
+window.addEventListener("pagehide",()=>{if(state.running)reconcileRunning(Date.now(),"");save()});
+window.addEventListener("pageshow",()=>{if(state.running){reconcileRunning();if(state.running)ensureInterval()}else{resetForCurrentDate(new Date());save()}render()});
+
+if("serviceWorker" in navigator)navigator.serviceWorker.register("sw.js").catch(()=>{});
+render();
+})();
+</script>
+</body>
+</html>
