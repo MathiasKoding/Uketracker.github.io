@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="no">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#111827" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="Studietracker" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <title>Studietracker</title>
+  <style>
+    :root{
+      color-scheme: light dark;
+      --bg:#f6f7f9; --card:#ffffff; --text:#111827; --muted:#6b7280;
+      --border:#e5e7eb; --accent:#2563eb; --accent-soft:#dbeafe;
+      --success:#16a34a;
+    }
+    @media (prefers-color-scheme: dark){
+      :root{
+        --bg:#0b0f16; --card:#141a23; --text:#f8fafc; --muted:#94a3b8;
+        --border:#263244; --accent:#60a5fa; --accent-soft:#172554;
+        --success:#4ade80;
+      }
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",Inter,Arial,sans-serif}
+    main{max-width:760px;margin:0 auto;padding:18px 16px 40px}
+    h1{font-size:28px;margin:8px 0 4px}
+    .sub{color:var(--muted);font-size:14px;margin-bottom:18px}
+    .card{background:var(--card);border:1px solid var(--border);border-radius:20px;padding:16px;margin-bottom:14px}
+    .row{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+    .big{font-size:32px;font-weight:700}
+    .small{font-size:13px;color:var(--muted)}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    .subject{padding:14px;border:1px solid var(--border);border-radius:16px;background:var(--card);text-align:left;color:inherit}
+    .subject.active{outline:2px solid var(--accent);background:var(--accent-soft)}
+    .subject strong{display:block;font-size:17px;margin-bottom:5px}
+    progress{width:100%;height:10px;border-radius:999px;overflow:hidden}
+    .timer{text-align:center;font-size:58px;font-weight:700;letter-spacing:-1px;font-variant-numeric:tabular-nums;padding:16px 0}
+    button,select,input{font:inherit}
+    button.primary{background:var(--accent);color:white;border:0}
+    button.secondary{background:transparent;color:var(--text);border:1px solid var(--border)}
+    button{min-height:46px;padding:0 16px;border-radius:12px;font-weight:600}
+    .buttons{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
+    label{font-size:13px;color:var(--muted);display:block}
+    select,input{width:100%;min-height:46px;border:1px solid var(--border);border-radius:12px;background:var(--card);color:var(--text);padding:0 12px;margin-top:5px}
+    .manual{display:grid;grid-template-columns:1fr 120px auto;gap:8px;align-items:end}
+    .danger{color:#dc2626}
+    .status{font-size:13px;color:var(--muted);min-height:20px;margin-top:8px}
+    .weekbar{height:12px;background:var(--border);border-radius:999px;overflow:hidden}
+    .weekbar > div{height:100%;background:var(--success);width:0}
+    @media(max-width:560px){.manual{grid-template-columns:1fr}.timer{font-size:48px}}
+  </style>
+</head>
+<body>
+<main>
+  <h1>Studietracker</h1>
+  <div class="sub">60 min arbeid · 15 min pause · 10 timer per fag</div>
+
+  <section class="card">
+    <div class="row">
+      <div>
+        <div class="small">Denne uken</div>
+        <div class="big"><span id="totalWorked">0t 00m</span> / 40t</div>
+      </div>
+      <div class="small" id="weekLabel"></div>
+    </div>
+    <div class="weekbar" style="margin-top:12px"><div id="totalBar"></div></div>
+  </section>
+
+  <section class="grid" id="subjects"></section>
+
+  <section class="card" style="margin-top:14px">
+    <div class="row">
+      <div>
+        <div class="small">Valgt fag</div>
+        <strong id="selectedName">Marin</strong>
+      </div>
+      <div class="small" id="phaseLabel">Arbeid · 60 min</div>
+    </div>
+    <div class="timer" id="timer">60:00</div>
+    <div class="buttons">
+      <button class="primary" id="startPause">Start</button>
+      <button class="secondary" id="nextPhase">Neste fase</button>
+      <button class="secondary" id="resetSession">Nullstill økt</button>
+    </div>
+    <div class="small" style="text-align:center;margin-top:10px">Kun arbeidstid teller mot målet.</div>
+  </section>
+
+  <section class="card">
+    <strong>Manuell registrering</strong>
+    <form id="manualForm" class="manual" style="margin-top:12px">
+      <label>Fag<select id="manualSubject"></select></label>
+      <label>Minutter<input id="manualMinutes" type="number" min="1" max="600" value="60"></label>
+      <button class="primary" type="submit">Legg til</button>
+    </form>
+    <div class="status" id="status"></div>
+  </section>
+
+  <section class="card">
+    <div class="row">
+      <div>
+        <strong>Ny uke</strong>
+        <div class="small">Trackeren nullstilles automatisk ved ny ISO-uke.</div>
+      </div>
+      <button class="secondary danger" id="resetWeek">Nullstill uke nå</button>
+    </div>
+  </section>
+</main>
+
+<script>
+(() => {
+  const subjects = ["Marin","Matte","ITGK","Mekanikk"];
+  const goal = 10*60*60;
+  const totalGoal = goal*subjects.length;
+
+  const state = {
+    selected: localStorage.getItem("selected") || "Marin",
+    totals: {},
+    phase: localStorage.getItem("phase") || "work",
+    remaining: Number(localStorage.getItem("remaining")) || 3600,
+    running: false,
+    lastTick: null,
+    interval: null
+  };
+
+  function isoWeekKey(d=new Date()){
+    const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+    const day = date.getUTCDay() || 7;
+    date.setUTCDate(date.getUTCDate() + 4 - day);
+    const yearStart = new Date(Date.UTC(date.getUTCFullYear(),0,1));
+    const week = Math.ceil((((date-yearStart)/86400000)+1)/7);
+    return `${date.getUTCFullYear()}-W${String(week).padStart(2,"0")}`;
+  }
+
+  const currentWeek = isoWeekKey();
+  const storedWeek = localStorage.getItem("weekKey");
+  if(storedWeek !== currentWeek){
+    subjects.forEach(s => localStorage.setItem("total_"+s,"0"));
+    localStorage.setItem("weekKey",currentWeek);
+  }
+
+  subjects.forEach(s => state.totals[s] = Number(localStorage.getItem("total_"+s)) || 0);
+
+  const $ = sel => document.querySelector(sel);
+  const subjectsEl = $("#subjects");
+  const manualSelect = $("#manualSubject");
+
+  subjects.forEach(s => {
+    const btn = document.createElement("button");
+    btn.className = "subject";
+    btn.type = "button";
+    btn.dataset.subject = s;
+    btn.innerHTML = `<strong>${s}</strong><div class="small"><span class="done">0t 00m</span> / 10t</div><progress max="1" value="0"></progress>`;
+    btn.addEventListener("click",()=>{state.selected=s;save();render();});
+    subjectsEl.appendChild(btn);
+
+    const opt = document.createElement("option");
+    opt.value = s; opt.textContent = s; manualSelect.appendChild(opt);
+  });
+
+  function fmt(sec){
+    const m = Math.floor(Math.max(0,sec)/60);
+    return `${Math.floor(m/60)}t ${String(m%60).padStart(2,"0")}m`;
+  }
+
+  function clock(sec){
+    const s = Math.max(0,Math.ceil(sec));
+    return `${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;
+  }
+
+  function save(){
+    subjects.forEach(s=>localStorage.setItem("total_"+s,String(state.totals[s])));
+    localStorage.setItem("selected",state.selected);
+    localStorage.setItem("phase",state.phase);
+    localStorage.setItem("remaining",String(state.remaining));
+    localStorage.setItem("weekKey",currentWeek);
+  }
+
+  function render(){
+    let total = 0;
+    document.querySelectorAll(".subject").forEach(btn=>{
+      const s=btn.dataset.subject;
+      const val=state.totals[s]||0;
+      total+=val;
+      btn.classList.toggle("active",s===state.selected);
+      btn.querySelector(".done").textContent=fmt(val);
+      btn.querySelector("progress").value=Math.min(1,val/goal);
+    });
+    $("#selectedName").textContent=state.selected;
+    $("#totalWorked").textContent=fmt(total);
+    $("#totalBar").style.width=`${Math.min(100,total/totalGoal*100)}%`;
+    $("#timer").textContent=clock(state.remaining);
+    $("#phaseLabel").textContent=state.phase==="work" ? "Arbeid · 60 min" : "Pause · 15 min";
+    $("#startPause").textContent=state.running ? "Pause" : "Start";
+    $("#weekLabel").textContent=currentWeek;
+  }
+
+  function stop(){
+    if(state.interval) clearInterval(state.interval);
+    state.interval=null; state.running=false; save(); render();
+  }
+
+  function nextPhase(){
+    stop();
+    state.phase = state.phase==="work" ? "break" : "work";
+    state.remaining = state.phase==="work" ? 3600 : 900;
+    save(); render();
+  }
+
+  function tick(){
+    const now=Date.now();
+    const elapsed=(now-state.lastTick)/1000;
+    state.lastTick=now;
+    state.remaining-=elapsed;
+    if(state.phase==="work") state.totals[state.selected]+=elapsed;
+    if(state.remaining<=0){ state.remaining=0; nextPhase(); return; }
+    save(); render();
+  }
+
+  $("#startPause").addEventListener("click",()=>{
+    if(state.running){ stop(); return; }
+    state.running=true;
+    state.lastTick=Date.now();
+    state.interval=setInterval(tick,1000);
+    render();
+  });
+
+  $("#nextPhase").addEventListener("click",nextPhase);
+  $("#resetSession").addEventListener("click",()=>{
+    stop(); state.phase="work"; state.remaining=3600; save(); render();
+  });
+
+  $("#manualForm").addEventListener("submit",e=>{
+    e.preventDefault();
+    const s=manualSelect.value;
+    let mins=Math.floor(Number($("#manualMinutes").value));
+    if(!Number.isFinite(mins)||mins<1){$("#status").textContent="Skriv inn minst 1 minutt.";return;}
+    mins=Math.min(600,mins);
+    state.totals[s]+=mins*60; save(); render();
+    $("#status").textContent=`La til ${mins} minutter på ${s}.`;
+  });
+
+  $("#resetWeek").addEventListener("click",()=>{
+    if(!confirm("Nullstille all registrert tid denne uken?")) return;
+    stop(); subjects.forEach(s=>state.totals[s]=0);
+    state.phase="work"; state.remaining=3600; save(); render();
+  });
+
+  document.addEventListener("visibilitychange",()=>{
+    if(document.hidden && state.running){
+      localStorage.setItem("backgroundStart",String(Date.now()));
+      localStorage.setItem("backgroundRemaining",String(state.remaining));
+      localStorage.setItem("backgroundPhase",state.phase);
+      localStorage.setItem("backgroundSubject",state.selected);
+    } else if(!document.hidden && state.running){
+      const start=Number(localStorage.getItem("backgroundStart"));
+      const base=Number(localStorage.getItem("backgroundRemaining"));
+      const phase=localStorage.getItem("backgroundPhase");
+      const subj=localStorage.getItem("backgroundSubject");
+      if(start&&base){
+        const elapsed=(Date.now()-start)/1000;
+        state.remaining=Math.max(0,base-elapsed);
+        if(phase==="work"&&subj) state.totals[subj]+=Math.min(elapsed,base);
+        state.lastTick=Date.now();
+        save(); render();
+        if(state.remaining<=0) nextPhase();
+      }
+    }
+  });
+
+  if("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("sw.js").catch(()=>{});
+  }
+
+  render();
+})();
+</script>
+</body>
+</html>
